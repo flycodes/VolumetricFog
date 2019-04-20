@@ -100,6 +100,7 @@ namespace FogExtension
         public bool m_ShadowsEnabled = false;
         public bool m_HeightFogEnabled = false;
 
+        private float k_Factor;
 
         #region Materials
 
@@ -141,6 +142,46 @@ namespace FogExtension
 
         #endregion
 
+        #region Cache PropertyID
+
+        private static int NoiseTexture, BlueNoiseTexture, NoiseTex3D;
+        private static int LightColor, FogColor, FogWorldPosition, LightDir, FogDirection;
+        private static int FogDensity, RayleighScatteringCoeff, MieScatteringCoeff,
+            ExtinctionCoeff, Anisotropy, KFactor, LightIntensity, FogSize,
+            RayMarchingSteps, AmbientFog, BaseHeightDensity, HeightDensityCoeff,
+            NoiseScale, FogSpeed;
+        private static int InverseProjectionMatrix, InverseViewMatrix;
+
+        private void InitPropertiesID()
+        {
+            NoiseTexture = Shader.PropertyToID("_NoiseTexture");
+            BlueNoiseTexture = Shader.PropertyToID("_BlueNoiseTexture");
+            NoiseTex3D = Shader.PropertyToID("_NoiseTex3D");
+
+            LightColor = Shader.PropertyToID("_LightColor");
+            FogColor = Shader.PropertyToID("_FogColor");
+            FogWorldPosition = Shader.PropertyToID("_FogWorldPosition");
+            LightDir = Shader.PropertyToID("_LightDir");
+            FogDirection = Shader.PropertyToID("_FogDirection");
+
+            FogDensity = Shader.PropertyToID("_FogDensity");
+            RayleighScatteringCoeff = Shader.PropertyToID("_RayleighScatteringCoeff");
+            MieScatteringCoeff = Shader.PropertyToID("_MieScatteringCoeff");
+            ExtinctionCoeff = Shader.PropertyToID("_ExtinctionCoeff");
+            Anisotropy = Shader.PropertyToID("_Anisotropy");
+            KFactor = Shader.PropertyToID("_KFactor");
+            LightIntensity = Shader.PropertyToID("_LightIntensity");
+            FogSize = Shader.PropertyToID("_FogSize");
+            RayMarchingSteps = Shader.PropertyToID("_RayMarchingSteps");
+            AmbientFog = Shader.PropertyToID("_AmbientFog");
+            BaseHeightDensity = Shader.PropertyToID("_BaseHeightDensity");
+            HeightDensityCoeff = Shader.PropertyToID("_HeightDensityCoeff");
+            NoiseScale = Shader.PropertyToID("_NoiseScale");
+            FogSpeed = Shader.PropertyToID("_FogSpeed");
+        }
+
+        #endregion Cache PropertyID
+
         private Camera m_Camera;
         private Camera RequiredCamera
         {
@@ -154,6 +195,11 @@ namespace FogExtension
         }
 
         private CommandBuffer m_AfterShadowPass;
+
+        void Awake()
+        {
+            InitPropertiesID();
+        }
 
         void Start()
         {
@@ -169,6 +215,14 @@ namespace FogExtension
             if (light)
             {
                 light.AddCommandBuffer(LightEvent.AfterShadowMap, m_AfterShadowPass);
+            }
+        }
+
+        private void RemoveLightCommandBuffer(Light light)
+        {
+            if (m_AfterShadowPass != null && light != null)
+            {
+                light.RemoveCommandBuffer(LightEvent.AfterShadowMap, m_AfterShadowPass);
             }
         }
     }
