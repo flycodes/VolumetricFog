@@ -24,6 +24,7 @@
     #pragma shader_feature __ NOISE_3D
     #pragma shader_feature __ SNOISE
 
+    UNITY_DECLARE_SHADOWMAP(ShadowMap);
 
     uniform sampler2D _MainTex, _CameraDepthTexture, _NoiseTexture,
         _BlueNoiseTexture;
@@ -40,8 +41,7 @@
         _RayMarchingSteps, _AmbientFog, _BaseHeightDensity, _HeightDensityCoeff,
         _NoiseScale, _FogSpeed;
     
-    uniform float4x4 InverseViewMatrix, InverseProjectionMatrix;
-
+    uniform float4x4 _InverseViewMatrix, _InverseProjectionMatrix;
 
     #define e  2.71828182845904523536
     #define pi 3.14159265358979323846
@@ -60,7 +60,7 @@
         o.uv = v.texcoord;
         
         float4 clipPos = float4(v.texcoord * 2.0 - 1.0, 1.0, 1.0);
-        float4 cameraRay = mul(InverseProjectionMatrix, clipPos);
+        float4 cameraRay = mul(_InverseProjectionMatrix, clipPos);
         o.ray = cameraRay / cameraRay.w;
 
         return o;
@@ -71,6 +71,7 @@
         float d_box = sdBox(p - float3(_FogWorldPosition), _FogSize);
     }
 
+    // HG相函数, https://www.astro.umd.edu/~jph/HG_note.pdf
     fixed4 henyey_greenstein(float cosTheta)
     {
         float n = 1 - (_Anisotropy * _Anisotropy);;
@@ -78,6 +79,7 @@
         return n / (4 * pi * pow(d, 1.5));
     }
 
+    // 瑞利散射
     float rayleigh(float cosTheta)
     {
         return (3.0 / (16.0 * pi)) * (1 + (cosTheta * cosTheta));
@@ -99,7 +101,8 @@
         float o2 = 4 * pi * squ;
         return o1 / o2;
     }
-
+    
+    // 比尔郎伯定律
     float beer_lambert(float density, float stepSize)
     {
         return saturate(exp(-density * stepSize));
@@ -129,7 +132,8 @@
 #endif    
         return noiseValue;   
     }
-
+   
+    // 米氏散射
     float mieScattering(float cosTheta)
     {
         float inScattering = 0;
@@ -145,7 +149,8 @@
 #endif
         return inScattering;
     }
-
+    
+    // 瑞利散射
     float rayleighScattering(float cosTheta)
     {
         float inScattering = 0;
@@ -171,7 +176,7 @@
         float lindepth = Linear01Depth(depth);
 
         float4 viewPos = float4(i.ray.xyz * lindepth, 1);
-        float3 worldPos = mul(InverseViewMatrix, viewPos).xyz;
+        float3 worldPos = mul(_InverseViewMatrix, viewPos).xyz;
         float3 rayDir = normalize(worldPos - _WorldSpaceCameraPos.xyz);
 
         float rayDistance = length(worldPos - _WorldSpaceCameraPos.xyz);
@@ -247,6 +252,6 @@
             #pragma vertex vert
             #pragma fragment frag
             ENDCG
-        } 
+        }
     }
 }

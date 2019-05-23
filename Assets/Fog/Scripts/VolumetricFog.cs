@@ -19,9 +19,7 @@ namespace FogExtension
     {
         Texture2D = 1,
         Texture3D = 2,
-        Texture3DCompute = 4,
-        SimplexNoise = 8,
-        SimplexNoiseCompute = 16,
+        SimplexNoise = 4,
     }
 
     [RequireComponent(typeof(Camera))]
@@ -29,17 +27,15 @@ namespace FogExtension
     {
         private const RenderTextureFormat FogRenderTextureFormat = RenderTextureFormat.ARGBHalf;
 
-        public Shader calculateFogShader;
-        public Shader blurShader;
-        public Shader fogShader;
-
-        private Material m_ApplyBlurMaterial;
-        private Material m_CalculateFogMaterial;
-        private Material m_ApplyFogMaterial;
+        public Shader m_CalculateFogShader;
+        public Shader m_ApplyBlurShader;
+        public Shader m_ApplyFogShader;
 
         public Transform m_Light;
-
         public List<Light> m_FogLightCasters;
+
+        public Texture2D m_FogTexture2D;
+        public Texture2D m_BlurNoiseTexture2D;
 
         public Vector3 m_FogWorldPosition;
         public bool m_LimitFogSize = true;
@@ -105,22 +101,37 @@ namespace FogExtension
         #region Materials
 
         private Texture3D m_FogTexture3D;
-        private RenderTexture m_FogTexture3DCompute;
         private RenderTexture m_FogTextureSimplex;
+
+        private Material m_ApplyBlurMaterial;
+        private Material m_CalculateFogMaterial;
+        private Material m_ApplyFogMaterial;
 
         public Material ApplyFogMaterial
         {
             get
             {
-                if (!m_ApplyFogMaterial && fogShader)
+                if (!m_ApplyFogMaterial && m_ApplyFogShader)
                 {
-                    m_ApplyFogMaterial = new Material(fogShader)
-                    {
-                        hideFlags = HideFlags.HideAndDontSave
-                    };
+                    m_ApplyFogMaterial = new Material(m_ApplyFogShader);
+                    m_ApplyFogMaterial.hideFlags = HideFlags.HideAndDontSave;
                 }
 
                 return m_ApplyFogMaterial;
+            }
+        }
+
+        public Material ApplyBlurMaterial
+        {
+            get
+            {
+                if (!m_ApplyBlurMaterial && m_ApplyBlurShader)
+                {
+                    m_ApplyBlurMaterial = new Material(m_ApplyBlurShader);
+                    m_ApplyBlurMaterial.hideFlags = HideFlags.HideAndDontSave;
+                }
+
+                return m_ApplyBlurMaterial;
             }
         }
 
@@ -128,9 +139,9 @@ namespace FogExtension
         {
             get
             {
-                if (!m_CalculateFogMaterial && calculateFogShader)
+                if (!m_CalculateFogMaterial && m_CalculateFogShader)
                 {
-                    m_CalculateFogMaterial = new Material(calculateFogShader)
+                    m_CalculateFogMaterial = new Material(m_CalculateFogShader)
                     {
                         hideFlags = HideFlags.HideAndDontSave
                     };
@@ -141,46 +152,6 @@ namespace FogExtension
         }
 
         #endregion
-
-        #region Cache PropertyID
-
-        private static int NoiseTexture, BlueNoiseTexture, NoiseTex3D;
-        private static int LightColor, FogColor, FogWorldPosition, LightDir, FogDirection;
-        private static int FogDensity, RayleighScatteringCoeff, MieScatteringCoeff,
-            ExtinctionCoeff, Anisotropy, KFactor, LightIntensity, FogSize,
-            RayMarchingSteps, AmbientFog, BaseHeightDensity, HeightDensityCoeff,
-            NoiseScale, FogSpeed;
-        private static int InverseProjectionMatrix, InverseViewMatrix;
-
-        private void InitPropertiesID()
-        {
-            NoiseTexture = Shader.PropertyToID("_NoiseTexture");
-            BlueNoiseTexture = Shader.PropertyToID("_BlueNoiseTexture");
-            NoiseTex3D = Shader.PropertyToID("_NoiseTex3D");
-
-            LightColor = Shader.PropertyToID("_LightColor");
-            FogColor = Shader.PropertyToID("_FogColor");
-            FogWorldPosition = Shader.PropertyToID("_FogWorldPosition");
-            LightDir = Shader.PropertyToID("_LightDir");
-            FogDirection = Shader.PropertyToID("_FogDirection");
-
-            FogDensity = Shader.PropertyToID("_FogDensity");
-            RayleighScatteringCoeff = Shader.PropertyToID("_RayleighScatteringCoeff");
-            MieScatteringCoeff = Shader.PropertyToID("_MieScatteringCoeff");
-            ExtinctionCoeff = Shader.PropertyToID("_ExtinctionCoeff");
-            Anisotropy = Shader.PropertyToID("_Anisotropy");
-            KFactor = Shader.PropertyToID("_KFactor");
-            LightIntensity = Shader.PropertyToID("_LightIntensity");
-            FogSize = Shader.PropertyToID("_FogSize");
-            RayMarchingSteps = Shader.PropertyToID("_RayMarchingSteps");
-            AmbientFog = Shader.PropertyToID("_AmbientFog");
-            BaseHeightDensity = Shader.PropertyToID("_BaseHeightDensity");
-            HeightDensityCoeff = Shader.PropertyToID("_HeightDensityCoeff");
-            NoiseScale = Shader.PropertyToID("_NoiseScale");
-            FogSpeed = Shader.PropertyToID("_FogSpeed");
-        }
-
-        #endregion Cache PropertyID
 
         private Camera m_Camera;
         private Camera RequiredCamera
@@ -198,7 +169,7 @@ namespace FogExtension
 
         void Awake()
         {
-            InitPropertiesID();
+
         }
 
         void Start()
@@ -224,6 +195,79 @@ namespace FogExtension
             {
                 light.RemoveCommandBuffer(LightEvent.AfterShadowMap, m_AfterShadowPass);
             }
+        }
+
+        private float CalculateRaymarchStepRation()
+        {
+            return 0.0f;
+        }
+
+        private bool IsRelatedAssetsLoaded()
+        {
+            return m_FogTexture2D != null || ApplyFogMaterial != null || m_ApplyFogShader != null ||
+                CalculateFogMaterial != null || m_CalculateFogShader != null ||
+                m_ApplyBlurMaterial != null || m_ApplyBlurShader != null;
+        }
+
+        [ImageEffectOpaque]
+        private void OnRenderImage(RenderTexture src, RenderTexture dst)
+        {
+            if (!IsRelatedAssetsLoaded())
+            {
+                Graphics.Blit(src, dst);
+                return;
+            }
+
+            if (m_ShadowsEnabled)
+            {
+                Shader.EnableKeyword("SHADOWS_ON");
+                Shader.DisableKeyword("SHADOWS_OFF");
+            }
+            else
+            {
+                Shader.DisableKeyword("SHADOWS_ON");
+                Shader.EnableKeyword("SHADOWS_OFF");
+            }
+
+            m_Light.GetComponent<Light>().intensity = m_LightIntensity;
+
+            var fogRTWidth = src.width >> m_RenderTextureResDivision;
+            var fogRTHeight = src.height >> m_RenderTextureResDivision;
+
+            var fogRT1 = RenderTexture.GetTemporary(fogRTWidth, fogRTHeight, 0, RenderTextureFormat.ARGBHalf);
+            var fogRT2 = RenderTexture.GetTemporary(fogRTWidth, fogRTHeight, 0, RenderTextureFormat.ARGBHalf);
+
+            fogRT1.filterMode = FilterMode.Bilinear;
+            fogRT2.filterMode = FilterMode.Bilinear;
+
+            SetMieScattering();
+            SetNoiseSource();
+
+            Shader.SetGlobalMatrix(ShaderIDs.InverseViewMatrix, RequiredCamera.cameraToWorldMatrix);
+            Shader.SetGlobalMatrix(ShaderIDs.InverseProjectionMatrix, RequiredCamera.projectionMatrix.inverse);
+        }
+
+        private void RenderFog(RenderTexture fogRenderTexture, RenderTexture src)
+        { }
+
+        private void BlurFog(RenderTexture fogTarget1, RenderTexture fogTarget2)
+        { }
+
+        private void BlendWithScene(RenderTexture source, RenderTexture destination, RenderTexture fogTarget)
+        { }
+
+        private void SetMieScattering()
+        { }
+
+        private void SetNoiseSource()
+        { }
+
+        private void ShaderFeatureHelper(Material mat, string key, bool enable)
+        {
+            if (enable)
+                mat.EnableKeyword(key);
+            else
+                mat.DisableKeyword(key);
         }
     }
 }

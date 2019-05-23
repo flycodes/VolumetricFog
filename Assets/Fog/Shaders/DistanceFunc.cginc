@@ -1,24 +1,13 @@
-// Adapted from: http://iquilezles.org/www/articles/distfunctions/distfunctions.htm
+// http://iquilezles.org/www/articles/distfunctions/distfunctions.htm
 
-// SIGNED DISTANCE FUNCTIONS //
-// These all return the minimum distance from point p to the desired shape's surface, given the other parameters.
-// The result is negative if you are inside the shape.  All shapes are centered about the origin, so you may need to
-// transform your input point (p) to account for translation or rotation
+// 符号距离函数
 
-// Sphere
-// s: radius
-float sdSphere(float3 p, float s)
-{
-    return length(p) - s;
-}
+float sdSphere(float3 p, float s) { return length(p) - s; }
 
-// Box
-// b: size of box in x/y/z
 float sdBox(float3 p, float3 b)
 {
     float3 d = abs(p) - b;
-    return min(max(d.x, max(d.y, d.z)), 0.0) +
-        length(max(d, 0.0));
+    return min(max(d.x, max(d.y, d.z)), 0.0) + length(max(d, 0.0));
 }
 
 // Torus
