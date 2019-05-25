@@ -33,7 +33,7 @@
 
     uniform float4 _MainTex_TexelSize, _CameraDepthTexture_TexelSize;
 
-    uniform float3 _LightColor, _FogColor, _FogWorldPosition, _LightDir,
+    uniform float3 _ShadowColor, _LightColor, _FogColor, _FogWorldPosition, _LightDir,
         _FogDirection;
 
     uniform float _FogDensity, _RayleighScatteringCoeff, _MieScatteringCoeff,

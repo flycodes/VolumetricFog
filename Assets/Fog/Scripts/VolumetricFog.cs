@@ -1,11 +1,12 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
 
-namespace FogExtension
+namespace VolumetricFogExtension
 {
-    public enum FpsLevel { Fps30, Fps60, Unlimited, }
+    public enum FpsLevel { Null, Fps30, Fps60, Unlimited, }
 
     public enum MieScatteringApproximation
     {
@@ -15,6 +16,7 @@ namespace FogExtension
         Off
     }
 
+    [Flags]
     public enum NoiseSource
     {
         Texture2D = 1,
@@ -46,6 +48,9 @@ namespace FogExtension
 
         [Range(16, 256)]
         public int m_RayMarchingSteps = 128;
+
+        public bool m_OptimizeSettingsFPS;
+        public FpsLevel m_FpsLevel = FpsLevel.Fps60;
 
         // 瑞利散射
         public bool m_EnableRayleighScattering = true;
@@ -89,7 +94,7 @@ namespace FogExtension
         public NoiseSource m_NoiseSource = NoiseSource.Texture2D;
         [Range(-100, 100)]
         public float m_NoiseScale = 0f;
-        public Vector3 m_3DNoiseTextureDimensions = Vector3.one;
+        public DTexture3D m_3DNoiseTextureDimensions = DTexture3D.one;
 
         public bool m_AddSceneColor = false;
         public bool m_BlurEnabled = false;
@@ -135,7 +140,7 @@ namespace FogExtension
             }
         }
 
-        public Material CalculateFogMaterial
+        public Material FogMaterial
         {
             get
             {
@@ -151,7 +156,7 @@ namespace FogExtension
             }
         }
 
-        #endregion
+        #endregion Materials
 
         private Camera m_Camera;
         private Camera RequiredCamera
@@ -167,14 +172,47 @@ namespace FogExtension
 
         private CommandBuffer m_AfterShadowPass;
 
+        #region Keywords and Features
+
+        internal readonly string ShaderKeyword_SHADOWS_ON = "SHADOWS_ON";
+        internal readonly string ShaderKeyword_SHADOWS_OFF = "SHADOWS_OFF";
+
+        internal readonly string ShaderFeature_HEIGHTFOG = "HEIGHTFOG";
+        internal readonly string ShaderFeature_RAYLEIGH_SCATTERING = "RAYLEIGH_SCATTERING";
+        internal readonly string ShaderFeature_HENYEY_GREENSTEIN = "HENYEY_GREENSTEIN";
+        internal readonly string ShaderFeature_CORNETTE_SHANKS = "CORNETTE_SHANKS";
+        internal readonly string ShaderFeature_SCHLICK = "SCHLICK";
+        internal readonly string ShaderFeature_LIMIT_FOG_SIZE = "LIMIT_FOG_SIZE";
+        internal readonly string ShaderFeature_NOISE_2D = "NOISE_2D";
+        internal readonly string ShaderFeature_NOISE_3D = "NOISE_3D";
+        internal readonly string ShaderFeature_SNOISE = "SNOISE";
+
+        #endregion Keywords and Features
+
+        [SerializeField]
+        private FpsHelper m_FpsHelper;
+
         void Awake()
         {
-
+            if (m_FpsHelper == null)
+            {
+                Debug.LogError("Need MonoBehaviour FpsHelper");
+            }
         }
 
         void Start()
         {
             m_FogLightCasters.ForEach(AddLightCommandBuffer);
+            Regenerate3DTexture();
+        }
+
+        private void Regenerate3DTexture()
+        {
+            bool b3d = m_NoiseSource == NoiseSource.Texture3D;
+            if (!b3d)
+                return;
+
+            m_FogTexture3D = TextureHelper.CreateFogLUT3DFrom2DSlices(m_FogTexture2D, m_3DNoiseTextureDimensions);
         }
 
         private void AddLightCommandBuffer(Light light)
@@ -199,13 +237,32 @@ namespace FogExtension
 
         private float CalculateRaymarchStepRation()
         {
-            return 0.0f;
+            if (!m_OptimizeSettingsFPS) return 1;
+
+            var currentFPS = m_FpsHelper.FpsValue;
+            var targetFPS = 30f;
+            switch (m_FpsLevel)
+            {
+                case FpsLevel.Fps30:
+                    targetFPS = 30;
+                    break;
+                case FpsLevel.Fps60:
+                    targetFPS = 60;
+                    break;
+                case FpsLevel.Unlimited:
+                    targetFPS = currentFPS; // do not optimize
+                    break;
+                default:
+                    Debug.Log("FPS Target not found");
+                    break;
+            }
+            return Mathf.Clamp01(currentFPS / targetFPS);
         }
 
         private bool IsRelatedAssetsLoaded()
         {
             return m_FogTexture2D != null || ApplyFogMaterial != null || m_ApplyFogShader != null ||
-                CalculateFogMaterial != null || m_CalculateFogShader != null ||
+                FogMaterial != null || m_CalculateFogShader != null ||
                 m_ApplyBlurMaterial != null || m_ApplyBlurShader != null;
         }
 
@@ -245,10 +302,58 @@ namespace FogExtension
 
             Shader.SetGlobalMatrix(ShaderIDs.InverseViewMatrix, RequiredCamera.cameraToWorldMatrix);
             Shader.SetGlobalMatrix(ShaderIDs.InverseProjectionMatrix, RequiredCamera.projectionMatrix.inverse);
+
+            RenderFog(fogRT1, src);
+            BlurFog(fogRT1, fogRT2);
+            BlendWithScene(src, dst, fogRT1);
+
+            RenderTexture.ReleaseTemporary(fogRT1);
+            RenderTexture.ReleaseTemporary(fogRT2);
         }
 
         private void RenderFog(RenderTexture fogRenderTexture, RenderTexture src)
-        { }
+        {
+            if (m_EnableRayleighScattering)
+            {
+                ShaderFeatureHelper(FogMaterial, ShaderFeature_RAYLEIGH_SCATTERING, true);
+                FogMaterial.SetFloat(ShaderIDs.RayleighScatteringCoeff, m_RayleighScatteringCoeff);
+            }
+            else
+            {
+                ShaderFeatureHelper(FogMaterial, ShaderFeature_RAYLEIGH_SCATTERING, false);
+            }
+
+            ShaderFeatureHelper(FogMaterial, ShaderFeature_LIMIT_FOG_SIZE, m_LimitFogSize);
+            ShaderFeatureHelper(FogMaterial, ShaderFeature_HEIGHTFOG, m_HeightFogEnabled);
+
+            var rmsr = CalculateRaymarchStepRation();
+
+            FogMaterial.SetFloat(ShaderIDs.RayMarchingSteps, m_RayMarchingSteps * Mathf.Pow(rmsr, 2));
+            FogMaterial.SetFloat(ShaderIDs.FogDensity, m_FogDensityCoeff);
+            FogMaterial.SetFloat(ShaderIDs.NoiseScale, m_NoiseScale);
+
+            FogMaterial.SetFloat(ShaderIDs.ExtinctionCoeff, m_ExtinctionCoeff);
+            FogMaterial.SetFloat(ShaderIDs.Anisotropy, m_Anisotropy);
+            FogMaterial.SetFloat(ShaderIDs.BaseHeightDensity, m_BaseHeightDensity);
+
+            FogMaterial.SetVector(ShaderIDs.FogWorldPosition, m_FogWorldPosition);
+            FogMaterial.SetFloat(ShaderIDs.FogSize, m_FogSize);
+            FogMaterial.SetFloat(ShaderIDs.LightIntensity, m_LightIntensity);
+
+            FogMaterial.SetColor(ShaderIDs.FogColor, m_Light.GetComponent<Light>().color);
+            FogMaterial.SetColor(ShaderIDs.ShadowColor, m_FogInShadowColor);
+            FogMaterial.SetColor(ShaderIDs.FogColor, m_UseLightColor ? m_Light.GetComponent<Light>().color : m_FogInLightColor);
+
+            FogMaterial.SetVector(ShaderIDs.LightDir, m_Light.GetComponent<Light>().transform.forward);
+            FogMaterial.SetFloat(ShaderIDs.AmbientFog, m_AmbientFog);
+
+            FogMaterial.SetVector(ShaderIDs.FogDirection, m_WindDirection);
+            FogMaterial.SetFloat(ShaderIDs.FogSpeed, m_WindSpeed);
+
+            FogMaterial.SetTexture(ShaderIDs.BlueNoiseTexture, m_BlurNoiseTexture2D);
+
+            Graphics.Blit(src, fogRenderTexture, FogMaterial);
+        }
 
         private void BlurFog(RenderTexture fogTarget1, RenderTexture fogTarget2)
         { }
@@ -262,12 +367,28 @@ namespace FogExtension
         private void SetNoiseSource()
         { }
 
+        private void ShaderToggleKeyword(string keyword, bool enable)
+        {
+            if (enable)
+            {
+                Shader.EnableKeyword(keyword);
+            }
+            else
+            {
+                Shader.DisableKeyword(keyword);
+            }
+        }
+
         private void ShaderFeatureHelper(Material mat, string key, bool enable)
         {
             if (enable)
+            {
                 mat.EnableKeyword(key);
+            }
             else
+            {
                 mat.DisableKeyword(key);
+            }
         }
     }
 }

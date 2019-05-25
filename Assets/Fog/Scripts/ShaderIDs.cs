@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace FogExtension
+namespace VolumetricFogExtension
 {
     static class ShaderIDs
     {
@@ -11,6 +11,7 @@ namespace FogExtension
         internal static readonly int NoiseTex3D = Shader.PropertyToID("_NoiseTex3D");
 
         internal static readonly int LightColor = Shader.PropertyToID("_LightColor");
+        internal static readonly int ShadowColor = Shader.PropertyToID("_ShadowColor");
         internal static readonly int FogColor = Shader.PropertyToID("_FogColor");
         internal static readonly int FogWorldPosition = Shader.PropertyToID("_FogWorldPosition");
         internal static readonly int LightDir = Shader.PropertyToID("_LightDir");

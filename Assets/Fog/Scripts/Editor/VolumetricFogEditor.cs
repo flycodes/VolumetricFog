@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEditor;
 
-using FogExtension;
+using VolumetricFogExtension;
 
 public class VolumetricFogEditor : Editor
 {
