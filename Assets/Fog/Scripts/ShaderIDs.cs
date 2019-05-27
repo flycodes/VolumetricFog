@@ -7,7 +7,7 @@ namespace VolumetricFogExtension
     static class ShaderIDs
     {
         internal static readonly int NoiseTexture = Shader.PropertyToID("_NoiseTexture");
-        internal static readonly int BlueNoiseTexture = Shader.PropertyToID("_BlueNoiseTexture");
+        internal static readonly int BlurNoiseTexture = Shader.PropertyToID("_BlurNoiseTexture");
         internal static readonly int NoiseTex3D = Shader.PropertyToID("_NoiseTex3D");
 
         internal static readonly int LightColor = Shader.PropertyToID("_LightColor");
@@ -30,6 +30,15 @@ namespace VolumetricFogExtension
         internal static readonly int HeightDensityCoeff = Shader.PropertyToID("_HeightDensityCoeff");
         internal static readonly int NoiseScale = Shader.PropertyToID("_NoiseScale");
         internal static readonly int FogSpeed = Shader.PropertyToID("_FogSpeed");
+
+        // ApplyBlur
+        internal static readonly int BlurOffsets = Shader.PropertyToID("_BlurOffsets");
+        internal static readonly int BlurWeights = Shader.PropertyToID("_BlurWeights");
+        internal static readonly int BlurDepthFalloff = Shader.PropertyToID("_BlurDepthFalloff");
+        internal static readonly int BlurDir = Shader.PropertyToID("_BlurDir");
+
+        // ApplyFog
+        internal static readonly int FogRendertargetLinear = Shader.PropertyToID("_FogRendertargetLinear");
 
         internal static readonly int InverseProjectionMatrix = Shader.PropertyToID("_InverseProjectionMatrix");
         internal static readonly int InverseViewMatrix = Shader.PropertyToID("_InverseViewMatrix");

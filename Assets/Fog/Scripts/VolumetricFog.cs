@@ -16,6 +16,9 @@ namespace VolumetricFogExtension
         Off
     }
 
+    /// <summary>
+    /// TODO: Add compute shader later.
+    /// </summary>
     [Flags]
     public enum NoiseSource
     {
@@ -50,7 +53,19 @@ namespace VolumetricFogExtension
         public int m_RayMarchingSteps = 128;
 
         public bool m_OptimizeSettingsFPS;
-        public FpsLevel m_FpsLevel = FpsLevel.Fps60;
+
+        [SerializeField]
+        private FpsLevel m_FpsLevel = FpsLevel.Fps60;
+        public FpsLevel FpsLevel
+        {
+            set
+            {
+                m_FpsLevel = value;
+                m_FpsHelper.FpsLevel = m_FpsLevel;
+            }
+            get { return m_FpsLevel; }
+        }
+
 
         // 瑞利散射
         public bool m_EnableRayleighScattering = true;
@@ -174,18 +189,21 @@ namespace VolumetricFogExtension
 
         #region Keywords and Features
 
-        internal readonly string ShaderKeyword_SHADOWS_ON = "SHADOWS_ON";
-        internal readonly string ShaderKeyword_SHADOWS_OFF = "SHADOWS_OFF";
+        internal readonly string Shader_SHADOWS_ON = "SHADOWS_ON";
+        internal readonly string Shader_SHADOWS_OFF = "SHADOWS_OFF";
+        internal readonly string Shader_HG_SCATTERING = "HG_SCATTERING";
+        internal readonly string Shader_CS_SCATTERING = "CS_SCATTERING";
+        internal readonly string Shader_SCHLICK_HG_SCATTERING = "SCHLICK_HG_SCATTERING";
+        internal readonly string Shader_SNOISE = "SNOISE";
+        internal readonly string Shader_NOISE2D = "NOISE2D";
+        internal readonly string Shader_NOISE3D = "NOISE3D";
 
-        internal readonly string ShaderFeature_HEIGHTFOG = "HEIGHTFOG";
-        internal readonly string ShaderFeature_RAYLEIGH_SCATTERING = "RAYLEIGH_SCATTERING";
-        internal readonly string ShaderFeature_HENYEY_GREENSTEIN = "HENYEY_GREENSTEIN";
-        internal readonly string ShaderFeature_CORNETTE_SHANKS = "CORNETTE_SHANKS";
-        internal readonly string ShaderFeature_SCHLICK = "SCHLICK";
-        internal readonly string ShaderFeature_LIMIT_FOG_SIZE = "LIMIT_FOG_SIZE";
-        internal readonly string ShaderFeature_NOISE_2D = "NOISE_2D";
-        internal readonly string ShaderFeature_NOISE_3D = "NOISE_3D";
-        internal readonly string ShaderFeature_SNOISE = "SNOISE";
+        internal readonly string Shader_HEIGHTFOG = "HEIGHTFOG";
+        internal readonly string Shader_RAYLEIGH_SCATTERING = "RAYLEIGH_SCATTERING";
+        internal readonly string Shader_HENYEY_GREENSTEIN = "HENYEY_GREENSTEIN";
+        internal readonly string Shader_CORNETTE_SHANKS = "CORNETTE_SHANKS";
+        internal readonly string Shader_SCHLICK = "SCHLICK";
+        internal readonly string Shader_LIMIT_FOG_SIZE = "LIMIT_FOG_SIZE";
 
         #endregion Keywords and Features
 
@@ -206,6 +224,11 @@ namespace VolumetricFogExtension
             Regenerate3DTexture();
         }
 
+        private void OnDestroy()
+        {
+            m_FogLightCasters.ForEach(RemoveLightCommandBuffer);
+        }
+
         private void Regenerate3DTexture()
         {
             bool b3d = m_NoiseSource == NoiseSource.Texture3D;
@@ -213,6 +236,11 @@ namespace VolumetricFogExtension
                 return;
 
             m_FogTexture3D = TextureHelper.CreateFogLUT3DFrom2DSlices(m_FogTexture2D, m_3DNoiseTextureDimensions);
+        }
+
+        private void CalculateKFactor()
+        {
+            k_Factor = 1.55f * m_Anisotropy - (0.55f * Mathf.Pow(m_Anisotropy, 3));
         }
 
         private void AddLightCommandBuffer(Light light)
@@ -277,13 +305,13 @@ namespace VolumetricFogExtension
 
             if (m_ShadowsEnabled)
             {
-                Shader.EnableKeyword("SHADOWS_ON");
-                Shader.DisableKeyword("SHADOWS_OFF");
+                Shader.EnableKeyword(Shader_SHADOWS_ON);
+                Shader.DisableKeyword(Shader_SHADOWS_OFF);
             }
             else
             {
-                Shader.DisableKeyword("SHADOWS_ON");
-                Shader.EnableKeyword("SHADOWS_OFF");
+                Shader.DisableKeyword(Shader_SHADOWS_ON);
+                Shader.EnableKeyword(Shader_SHADOWS_OFF);
             }
 
             m_Light.GetComponent<Light>().intensity = m_LightIntensity;
@@ -315,16 +343,16 @@ namespace VolumetricFogExtension
         {
             if (m_EnableRayleighScattering)
             {
-                ShaderFeatureHelper(FogMaterial, ShaderFeature_RAYLEIGH_SCATTERING, true);
+                ShaderFeatureHelper(FogMaterial, Shader_RAYLEIGH_SCATTERING, true);
                 FogMaterial.SetFloat(ShaderIDs.RayleighScatteringCoeff, m_RayleighScatteringCoeff);
             }
             else
             {
-                ShaderFeatureHelper(FogMaterial, ShaderFeature_RAYLEIGH_SCATTERING, false);
+                ShaderFeatureHelper(FogMaterial, Shader_RAYLEIGH_SCATTERING, false);
             }
 
-            ShaderFeatureHelper(FogMaterial, ShaderFeature_LIMIT_FOG_SIZE, m_LimitFogSize);
-            ShaderFeatureHelper(FogMaterial, ShaderFeature_HEIGHTFOG, m_HeightFogEnabled);
+            ShaderFeatureHelper(FogMaterial, Shader_LIMIT_FOG_SIZE, m_LimitFogSize);
+            ShaderFeatureHelper(FogMaterial, Shader_HEIGHTFOG, m_HeightFogEnabled);
 
             var rmsr = CalculateRaymarchStepRation();
 
@@ -350,32 +378,95 @@ namespace VolumetricFogExtension
             FogMaterial.SetVector(ShaderIDs.FogDirection, m_WindDirection);
             FogMaterial.SetFloat(ShaderIDs.FogSpeed, m_WindSpeed);
 
-            FogMaterial.SetTexture(ShaderIDs.BlueNoiseTexture, m_BlurNoiseTexture2D);
+            FogMaterial.SetTexture(ShaderIDs.BlurNoiseTexture, m_BlurNoiseTexture2D);
 
             Graphics.Blit(src, fogRenderTexture, FogMaterial);
         }
 
         private void BlurFog(RenderTexture fogTarget1, RenderTexture fogTarget2)
-        { }
+        {
+            if (!m_BlurEnabled)
+                return;
 
-        private void BlendWithScene(RenderTexture source, RenderTexture destination, RenderTexture fogTarget)
-        { }
+            ApplyBlurMaterial.SetFloat(ShaderIDs.BlurDepthFalloff, m_BlurDepthFallOff);
+
+            Vector4 blurOffsets = new Vector4(0, m_BlurOffsets.x, m_BlurOffsets.y, m_BlurOffsets.z);
+            ApplyBlurMaterial.SetVector(ShaderIDs.BlurOffsets, blurOffsets);
+
+            Vector4 blurWeights = new Vector4(m_BlurWeights.x + m_BlurWeights.y + m_BlurWeights.z, m_BlurWeights.x, m_BlurWeights.y, m_BlurWeights.z);
+            ApplyBlurMaterial.SetVector(ShaderIDs.BlurWeights, blurWeights);
+
+            for (int i = 0; i < m_BlurIterations; ++i)
+            {
+                ApplyBlurMaterial.SetVector(ShaderIDs.BlurDir, new Vector2(0, 1));
+                Graphics.Blit(fogTarget1, fogTarget2, ApplyBlurMaterial);
+
+                ApplyBlurMaterial.SetVector(ShaderIDs.BlurDir, new Vector2(1, 0));
+                Graphics.Blit(fogTarget1, fogTarget2, ApplyBlurMaterial);
+            }
+        }
+
+        private void BlendWithScene(RenderTexture src, RenderTexture dst, RenderTexture fogTarget)
+        {
+            if (!m_AddSceneColor)
+            {
+                Graphics.Blit(src, dst);
+                return;
+            }
+
+            ApplyFogMaterial.SetTexture(ShaderIDs.FogRendertargetLinear, fogTarget);
+
+            Graphics.Blit(src, dst, ApplyFogMaterial);
+        }
 
         private void SetMieScattering()
-        { }
+        {
+            ShaderFeatureHelper(FogMaterial, Shader_HG_SCATTERING, false);
+            ShaderFeatureHelper(FogMaterial, Shader_CS_SCATTERING, false);
+            ShaderFeatureHelper(FogMaterial, Shader_SCHLICK_HG_SCATTERING, false);
+
+            switch (m_MieScatteringApproximation)
+            {
+                case MieScatteringApproximation.HenyeyGreenstein:
+                    ShaderFeatureHelper(FogMaterial, Shader_HG_SCATTERING, true);
+                    FogMaterial.SetFloat(ShaderIDs.MieScatteringCoeff, m_MieScatteringCoeff);
+                    break;
+                case MieScatteringApproximation.CornetteShanks:
+                    ShaderFeatureHelper(FogMaterial, Shader_CS_SCATTERING, true);
+                    FogMaterial.SetFloat(ShaderIDs.MieScatteringCoeff, m_MieScatteringCoeff);
+                    break;
+                case MieScatteringApproximation.Schlick:
+                    CalculateKFactor();
+                    ShaderFeatureHelper(FogMaterial, Shader_SCHLICK_HG_SCATTERING, true);
+                    FogMaterial.SetFloat(ShaderIDs.KFactor, k_Factor);
+                    FogMaterial.SetFloat(ShaderIDs.MieScatteringCoeff, m_MieScatteringCoeff);
+                    break;
+                case MieScatteringApproximation.Off:
+                    break;
+                default:
+                    break;
+            }
+        }
 
         private void SetNoiseSource()
-        { }
-
-        private void ShaderToggleKeyword(string keyword, bool enable)
         {
-            if (enable)
+            ShaderFeatureHelper(FogMaterial, Shader_SNOISE, false);
+            ShaderFeatureHelper(FogMaterial, Shader_NOISE2D, false);
+            ShaderFeatureHelper(FogMaterial, Shader_NOISE3D, false);
+
+            switch (m_NoiseSource)
             {
-                Shader.EnableKeyword(keyword);
-            }
-            else
-            {
-                Shader.DisableKeyword(keyword);
+                case NoiseSource.Texture2D:
+                    ShaderFeatureHelper(FogMaterial, Shader_NOISE2D, false);
+                    break;
+                case NoiseSource.Texture3D:
+                    ShaderFeatureHelper(FogMaterial, Shader_NOISE3D, false);
+                    break;
+                case NoiseSource.SimplexNoise:
+                    ShaderFeatureHelper(FogMaterial, Shader_SNOISE, true);
+                    break;
+                default:
+                    break;
             }
         }
 

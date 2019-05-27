@@ -19,7 +19,7 @@
 	sampler2D _MainTex, _CameraDepthTexture;
 	uniform float4 _MainTex_TexelSize, _BlurOffsets, _BlurWeights;
 	uniform float _BlurDepthFalloff;
-	uniform float2 BlurDir;
+	uniform float2 _BlurDir;
 
 	v2f vert(appdata_img v)
 	{
@@ -43,23 +43,23 @@
 		for (int i = 1; i < 4; i++) 
 		{
 		    // add pixel contribution of both sides of the main pixel
-			float depth = Linear01Depth(tex2D(_CameraDepthTexture, (input.uv + BlurDir * _BlurOffsets[i] * _MainTex_TexelSize.xy )));
+			float depth = Linear01Depth(tex2D(_CameraDepthTexture, (input.uv + _BlurDir * _BlurOffsets[i] * _MainTex_TexelSize.xy )));
 
 			// calculate if the pixel is on edge or not
 			float w = abs(depth-centralDepth)* _BlurDepthFalloff;
             w = exp(-w*w);
 			
 			// add to result
-			result += tex2D(_MainTex, ( input.uv + BlurDir * _BlurOffsets[i] * _MainTex_TexelSize.xy )) * w * _BlurWeights[i];
+			result += tex2D(_MainTex, ( input.uv + _BlurDir * _BlurOffsets[i] * _MainTex_TexelSize.xy )) * w * _BlurWeights[i];
 			
 			totalWeight += w * _BlurWeights[i];
 	 
-            depth = Linear01Depth(tex2D(_CameraDepthTexture, (input.uv - BlurDir * _BlurOffsets[i] * _MainTex_TexelSize.xy )));
+            depth = Linear01Depth(tex2D(_CameraDepthTexture, (input.uv - _BlurDir * _BlurOffsets[i] * _MainTex_TexelSize.xy )));
 
             w = abs(depth-centralDepth)* _BlurDepthFalloff;
             w = exp(-w*w);
      
-            result += tex2D(_MainTex, ( input.uv - BlurDir * _BlurOffsets[i] * _MainTex_TexelSize.xy )) * w * _BlurWeights[i];
+            result += tex2D(_MainTex, ( input.uv - _BlurDir * _BlurOffsets[i] * _MainTex_TexelSize.xy )) * w * _BlurWeights[i];
      
             totalWeight += w * _BlurWeights[i];
 		}

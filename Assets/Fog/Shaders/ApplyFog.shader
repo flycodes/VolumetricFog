@@ -14,18 +14,10 @@ Shader "VolumetricFog/ApplyFog"
 				float2 uv : TEXCOORD0;
 				float3 ray : TEXCOORD1;
             };   
-			
 
-            uniform sampler2D FogRendertargetLinear,
-                              _CameraDepthTexture,
-                              _MainTex;
+            uniform sampler2D _FogRendertargetLinear, _CameraDepthTexture, _MainTex;
             
-            uniform float4    _CameraDepthTexture_TexelSize,
-                              _MainTex_TexelSize;
-            
-            
-            uniform float4x4  InverseViewMatrix,                         
-                              InverseProjectionMatrix;	                       
+            uniform float4 _CameraDepthTexture_TexelSize, _MainTex_TexelSize;
             
             v2f vert(appdata_img v ) 
             {
@@ -38,7 +30,7 @@ Shader "VolumetricFog/ApplyFog"
             
             float4 frag(v2f input) : SV_Target 
             {			
-                float4 fogSample = tex2D(FogRendertargetLinear, input.uv);
+                float4 fogSample = tex2D(_FogRendertargetLinear, input.uv);
                 float4 colorSample = tex2D(_MainTex, input.uv);
                 
                // float4 result = float4(colorSample.rgb * fogSample.a + fogSample,colorSample.a);

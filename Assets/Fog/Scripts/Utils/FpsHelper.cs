@@ -13,6 +13,7 @@ namespace VolumetricFogExtension
 
         [SerializeField]
         private FpsLevel m_FpsLevel = FpsLevel.Fps60;
+        public FpsLevel FpsLevel { set { m_FpsLevel = value; } get { return m_FpsLevel; } }
 
         private int m_AccuFrameCnt = 0;
         private int m_UpdateRate = 4;
